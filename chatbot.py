@@ -1,9 +1,11 @@
 import os
-import openai
+from openai import OpenAI
 import requests
 import telebot
 import pickle
-from langchain.vectorstores import FAISS as BaseFAISS
+# from langchain.vectorstores import FAISS as BaseFAISS
+from langchain_community.vectorstores import FAISS as BaseFAISS
+
 
 from dotenv import load_dotenv
 from gtts import gTTS
@@ -11,7 +13,8 @@ from pydub import AudioSegment
 from celery import Celery
 import speech_recognition as sr
 
-from langchain.embeddings import OpenAIEmbeddings
+# from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 
 load_dotenv()
 
@@ -35,8 +38,11 @@ conversations = {}
 class FAISS(BaseFAISS):
     @staticmethod
     def load(file_path):
-        with open(file_path, "rb") as f:
-            return pickle.load(f)
+        if os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                return pickle.load(f)
+        else:
+            return None
 
 
 # Load the FAISS index
@@ -70,18 +76,33 @@ def generate_response_chat(message_list):
         # Replace the last message in message_list with the updated message
         message_list[-1] = updated_message
 
-    openai.api_key = OPENAI_API_KEY
-    # Send request to GPT-3 (replace with actual GPT-3 API call)
-    gpt3_response = openai.ChatCompletion.create(
-        model="gpt-4",
-        temperature=0,
-        messages=[
-                     {"role": "system",
-                      "content": SYSTEM_PROMPT},
-                 ] + message_list
+    # openai.api_key = OPENAI_API_KEY
+    # # Send request to GPT-3 (replace with actual GPT-3 API call)
+    # gpt3_response = openai.ChatCompletion.create(
+    #     model="gpt-4o",
+    #     temperature=0,
+    #     messages=[
+    #                  {"role": "system",
+    #                   "content": SYSTEM_PROMPT},
+    #              ] + message_list
+    # )
+
+    client = OpenAI(
+        # This is the default and can be omitted
+        api_key=OPENAI_API_KEY,
     )
 
-    assistant_response = gpt3_response["choices"][0]["message"]["content"].strip()
+    gpt3_response = client.chat.completions.create(
+        messages=[
+            {
+                "role": "user",
+                "content": SYSTEM_PROMPT,
+            }
+        ] + message_list,
+        model="gpt-3.5-turbo",
+    )
+
+    assistant_response = gpt3_response.choices[0].message.content.strip()
 
     return assistant_response
 
@@ -155,7 +176,7 @@ def handle_voice(message):
         f.write(file.content)
 
     # Use pydub to read in the audio file and convert it to WAV format
-    sound = AudioSegment.from_file("voice_message.ogg", format="ogg")
+    sound = AudioSegment.from_file("voice_message", format="ogg")
     sound.export("voice_message.wav", format="wav")
 
     # Use SpeechRecognition to transcribe the voice message
@@ -213,4 +234,4 @@ if __name__ == "__main__":
     print("Starting bot...")
     print("Bot Started")
     print("Press Ctrl + C to stop bot")
-    bot.polling()
+    bot.infinity_polling(timeout=10, long_polling_timeout = 5)
